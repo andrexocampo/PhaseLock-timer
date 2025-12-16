@@ -215,13 +215,13 @@ MIT License - see LICENSE file for details
 ## Screenshots
 
 ### Main Interface with Timer Running
-![Main Interface with Timer Running](docs/screenshots/main-interface.png)
+![Main Interface with Timer Running](docs/screenshots/main-interface.PNG)
 
 ### Settings Panel
-![Settings Panel](docs/screenshots/settings-panel.png)
+![Settings Panel](docs/screenshots/settings-panel.PNG)
 
 ### Block Sequence Preview
-![Block Sequence Preview](docs/screenshots/preview-block.png)
+![Block Sequence Preview](docs/screenshots/previiew-block.PNG)
 
 ## Contributing
 
