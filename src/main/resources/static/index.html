@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PhaseLock Timer</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -99,12 +101,80 @@
                 <h2>Sequence Preview</h2>
                 <div id="previewContent"></div>
             </section>
+
+            <!-- Sound Settings Panel -->
+            <section class="settings-panel" id="settingsPanel" style="display: none;">
+                <div class="settings-header">
+                    <h2>Sound Settings</h2>
+                    <button class="btn-close" onclick="closeSettings()">&times;</button>
+                </div>
+                <form id="soundSettingsForm">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="soundsEnabled" checked>
+                            Enable Sounds
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="soundVolume">Volume:</label>
+                        <input type="range" id="soundVolume" min="0" max="100" value="70">
+                        <span id="volumeValue">70%</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pomodoroSound">Pomodoro Start Sound:</label>
+                        <select id="pomodoroSound">
+                            <option value="default">Default</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="breakSound">Break Start Sound:</label>
+                        <select id="breakSound">
+                            <option value="default">Default</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="completeSound">Timer Complete Sound:</label>
+                        <select id="completeSound">
+                            <option value="default">Default</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" onclick="saveSoundSettings()">Save Settings</button>
+                        <button type="button" class="btn btn-secondary" onclick="testSound('pomodoro')">Test Pomodoro</button>
+                        <button type="button" class="btn btn-secondary" onclick="testSound('break')">Test Break</button>
+                        <button type="button" class="btn btn-secondary" onclick="testSound('complete')">Test Complete</button>
+                    </div>
+                </form>
+
+                <div class="notification-settings">
+                    <h3>Browser Notifications</h3>
+                    <p id="notificationStatus">Status: Checking...</p>
+                    <button type="button" class="btn btn-secondary" id="requestNotificationBtn" onclick="requestNotificationPermission()">
+                        Enable Notifications
+                    </button>
+                </div>
+            </section>
         </div>
+
+        <!-- Settings Button -->
+        <button class="settings-button" onclick="toggleSettings()" title="Sound Settings">
+            ⚙
+        </button>
 
         <!-- Status Messages -->
         <div id="message" class="message" style="display: none;"></div>
     </div>
 
+    <script src="/audio-manager.js"></script>
+    <script src="/notification-manager.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>

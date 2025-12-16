@@ -2,12 +2,29 @@ const API_BASE = '/api';
 let currentSessionId = null;
 let currentBlockId = null;
 let updateInterval = null;
+let stompClient = null;
+let websocketConnected = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+// Track previous phase for change detection
+let previousPhase = null;
+let previousPhaseIndex = null;
+let previousStatus = null;
 
 // Initialize on page load
 window.addEventListener('DOMContentLoaded', () => {
     checkActiveSession();
     setupForm();
+    setupNotifications();
 });
+
+// Setup notifications permission on load
+async function setupNotifications() {
+    if (notificationManager.isSupported()) {
+        await notificationManager.requestPermission();
+    }
+}
 
 // Setup form
 function setupForm() {
@@ -26,7 +43,7 @@ async function checkActiveSession() {
             currentSessionId = status.sessionId;
             currentBlockId = status.blockId;
             updateTimerDisplay(status);
-            startPolling();
+            startPolling(); // This will try WebSocket first
             updateControlButtons(status.status);
         } else {
             resetTimerDisplay();
@@ -309,6 +326,11 @@ async function cancelTimer() {
 
 // Update timer display
 function updateTimerDisplay(status) {
+    // Detect phase change
+    const phaseChanged = previousPhase !== status.currentPhase || 
+                         previousPhaseIndex !== status.currentPhaseIndex;
+    const statusChanged = previousStatus !== status.status;
+    
     // Update remaining time
     document.getElementById('remainingTime').textContent = status.formattedRemainingTime;
     
@@ -341,10 +363,79 @@ function updateTimerDisplay(status) {
     updateProgressBar(status);
     
     // Update colors based on phase
-    updatePhaseColors(status.currentPhase);
+    const colorChanged = updatePhaseColors(status.currentPhase);
     
     // Update browser title
     updateBrowserTitle(status);
+    
+    // Handle phase change notifications and effects
+    if (phaseChanged && previousPhase !== null) {
+        handlePhaseChange(status);
+    }
+    
+    // Handle status change (especially completion)
+    if (statusChanged && status.status === 'COMPLETED' && previousStatus !== 'COMPLETED') {
+        handleTimerComplete();
+    }
+    
+    // Update previous values
+    previousPhase = status.currentPhase;
+    previousPhaseIndex = status.currentPhaseIndex;
+    previousStatus = status.status;
+}
+
+// Handle phase change
+function handlePhaseChange(status) {
+    // Play sound
+    audioManager.playSound(status.currentPhase);
+    
+    // Show browser notification (if page is not visible)
+    notificationManager.showPhaseChangeNotification(
+        status.currentPhase,
+        status.currentPhaseIndex + 1,
+        status.totalPhases
+    );
+    
+    // Trigger visual effect
+    triggerPhaseChangeEffect();
+}
+
+// Handle timer completion
+function handleTimerComplete() {
+    // Play completion sound
+    audioManager.playSound('COMPLETED');
+    
+    // Show completion notification
+    notificationManager.showTimerCompleteNotification();
+    
+    // Trigger completion effect
+    triggerCompletionEffect();
+}
+
+// Trigger visual effect for phase change
+function triggerPhaseChangeEffect() {
+    const timerPanel = document.getElementById('timerPanel');
+    const timeDisplay = document.querySelector('.time-display');
+    
+    // Add blink effect
+    timerPanel.classList.add('phase-change-blink');
+    timeDisplay.classList.add('phase-change-highlight');
+    
+    setTimeout(() => {
+        timerPanel.classList.remove('phase-change-blink');
+        timeDisplay.classList.remove('phase-change-highlight');
+    }, 2000);
+}
+
+// Trigger visual effect for completion
+function triggerCompletionEffect() {
+    const timerPanel = document.getElementById('timerPanel');
+    
+    timerPanel.classList.add('timer-complete-effect');
+    
+    setTimeout(() => {
+        timerPanel.classList.remove('timer-complete-effect');
+    }, 3000);
 }
 
 // Update progress bar
@@ -361,6 +452,10 @@ function updatePhaseColors(phase) {
     const timerDisplay = document.querySelector('.time-display');
     const phaseIndicator = document.querySelector('.phase-indicator');
     
+    const previousPhase = timerDisplay.classList.contains('phase-pomodoro') ? 'POMODORO' :
+                         timerDisplay.classList.contains('phase-short-break') ? 'SHORT_BREAK' :
+                         timerDisplay.classList.contains('phase-long-break') ? 'LONG_BREAK' : null;
+    
     // Remove previous classes
     timerDisplay.classList.remove('phase-pomodoro', 'phase-short-break', 'phase-long-break');
     phaseIndicator.classList.remove('phase-pomodoro', 'phase-short-break', 'phase-long-break');
@@ -376,6 +471,9 @@ function updatePhaseColors(phase) {
         timerDisplay.classList.add('phase-long-break');
         phaseIndicator.classList.add('phase-long-break');
     }
+    
+    // Return true if phase actually changed
+    return previousPhase !== phase;
 }
 
 // Update browser title
@@ -426,16 +524,109 @@ function resetTimerDisplay() {
     timerDisplay.classList.remove('phase-pomodoro', 'phase-short-break', 'phase-long-break');
     phaseIndicator.classList.remove('phase-pomodoro', 'phase-short-break', 'phase-long-break');
     
+    // Reset previous phase tracking
+    previousPhase = null;
+    previousPhaseIndex = null;
+    previousStatus = null;
+    
     document.title = 'PhaseLock Timer';
 }
 
-// Start polling to update timer
+// WebSocket connection management
+function connectWebSocket() {
+    if (stompClient && stompClient.connected) {
+        return; // Already connected
+    }
+
+    if (!currentSessionId) {
+        return; // No active session
+    }
+
+    try {
+        const socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+        
+        // Disable debug logging
+        stompClient.debug = () => {};
+        
+        stompClient.connect({}, function(frame) {
+            console.log('WebSocket connected: ' + frame);
+            websocketConnected = true;
+            reconnectAttempts = 0;
+            
+            // Subscribe to timer updates
+            stompClient.subscribe('/topic/timer/' + currentSessionId, function(message) {
+                try {
+                    const status = JSON.parse(message.body);
+                    updateTimerDisplay(status);
+                    
+                    if (status.status === 'COMPLETED') {
+                        disconnectWebSocket();
+                        showMessage('Block completed!', 'success');
+                    } else if (status.status === 'STOPPED') {
+                        disconnectWebSocket();
+                        resetTimerDisplay();
+                    }
+                } catch (error) {
+                    console.error('Error processing WebSocket message:', error);
+                }
+            });
+        }, function(error) {
+            console.error('WebSocket connection error:', error);
+            websocketConnected = false;
+            handleWebSocketError();
+        });
+    } catch (error) {
+        console.error('Error creating WebSocket connection:', error);
+        handleWebSocketError();
+    }
+}
+
+// Handle WebSocket connection errors - fallback to polling
+function handleWebSocketError() {
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect WebSocket (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+        setTimeout(() => {
+            if (currentSessionId) {
+                connectWebSocket();
+            }
+        }, 2000 * reconnectAttempts); // Exponential backoff
+    } else {
+        console.log('WebSocket connection failed, falling back to polling');
+        startPolling(); // Fallback to polling
+    }
+}
+
+// Disconnect WebSocket
+function disconnectWebSocket() {
+    if (stompClient && stompClient.connected) {
+        stompClient.disconnect();
+    }
+    stompClient = null;
+    websocketConnected = false;
+    reconnectAttempts = 0;
+}
+
+// Start real-time updates (WebSocket with polling fallback)
 function startPolling() {
     stopPolling(); // Ensure no multiple intervals
     
+    // Try WebSocket first
+    if (currentSessionId) {
+        connectWebSocket();
+        // If WebSocket fails, polling will start automatically
+    }
+    
+    // Fallback polling (will only run if WebSocket is not connected)
     updateInterval = setInterval(async () => {
         if (!currentSessionId) {
             stopPolling();
+            return;
+        }
+        
+        // If WebSocket is connected, skip polling
+        if (websocketConnected) {
             return;
         }
         
@@ -461,8 +652,9 @@ function startPolling() {
     }, 1000); // Update every second
 }
 
-// Stop polling
+// Stop polling and WebSocket
 function stopPolling() {
+    disconnectWebSocket();
     if (updateInterval) {
         clearInterval(updateInterval);
         updateInterval = null;
@@ -479,4 +671,110 @@ function showMessage(text, type = 'success') {
     setTimeout(() => {
         messageDiv.style.display = 'none';
     }, 5000);
+}
+
+// Settings Panel Functions
+function toggleSettings() {
+    const settingsPanel = document.getElementById('settingsPanel');
+    if (settingsPanel.style.display === 'none' || !settingsPanel.style.display) {
+        openSettings();
+    } else {
+        closeSettings();
+    }
+}
+
+function openSettings() {
+    const settingsPanel = document.getElementById('settingsPanel');
+    settingsPanel.style.display = 'block';
+    settingsPanel.scrollIntoView({ behavior: 'smooth' });
+    loadSoundSettings();
+    updateNotificationStatus();
+}
+
+function closeSettings() {
+    const settingsPanel = document.getElementById('settingsPanel');
+    settingsPanel.style.display = 'none';
+}
+
+function loadSoundSettings() {
+    const settings = audioManager.getSettings();
+    
+    document.getElementById('soundsEnabled').checked = settings.enabled !== false;
+    document.getElementById('soundVolume').value = (settings.volume || 0.7) * 100;
+    document.getElementById('volumeValue').textContent = Math.round((settings.volume || 0.7) * 100) + '%';
+    document.getElementById('pomodoroSound').value = settings.pomodoroStart || 'default';
+    document.getElementById('breakSound').value = settings.breakStart || 'default';
+    document.getElementById('completeSound').value = settings.timerComplete || 'default';
+    
+    // Update volume display on change
+    const volumeSlider = document.getElementById('soundVolume');
+    volumeSlider.removeEventListener('input', updateVolumeDisplay);
+    volumeSlider.addEventListener('input', updateVolumeDisplay);
+}
+
+function updateVolumeDisplay(e) {
+    document.getElementById('volumeValue').textContent = e.target.value + '%';
+}
+
+function saveSoundSettings() {
+    const settings = {
+        enabled: document.getElementById('soundsEnabled').checked,
+        volume: document.getElementById('soundVolume').value / 100,
+        pomodoroStart: document.getElementById('pomodoroSound').value,
+        breakStart: document.getElementById('breakSound').value,
+        timerComplete: document.getElementById('completeSound').value
+    };
+    
+    audioManager.updateSettings(settings);
+    showMessage('Sound settings saved!', 'success');
+}
+
+function testSound(type) {
+    if (type === 'pomodoro') {
+        audioManager.playSound('POMODORO');
+    } else if (type === 'break') {
+        audioManager.playSound('SHORT_BREAK');
+    } else if (type === 'complete') {
+        audioManager.playSound('COMPLETED');
+    }
+}
+
+async function requestNotificationPermission() {
+    const granted = await notificationManager.requestPermission();
+    updateNotificationStatus();
+    
+    if (granted) {
+        showMessage('Notifications enabled!', 'success');
+    } else {
+        showMessage('Notification permission denied', 'error');
+    }
+}
+
+function updateNotificationStatus() {
+    const statusElement = document.getElementById('notificationStatus');
+    const button = document.getElementById('requestNotificationBtn');
+    
+    if (!notificationManager.isSupported()) {
+        statusElement.textContent = 'Status: Not supported in this browser';
+        button.style.display = 'none';
+        return;
+    }
+    
+    const permission = notificationManager.getPermission();
+    if (permission === 'granted') {
+        statusElement.textContent = 'Status: Enabled';
+        button.textContent = 'Notifications Enabled';
+        button.disabled = true;
+        button.style.opacity = '0.6';
+    } else if (permission === 'denied') {
+        statusElement.textContent = 'Status: Denied (check browser settings)';
+        button.textContent = 'Permission Denied';
+        button.disabled = true;
+        button.style.opacity = '0.6';
+    } else {
+        statusElement.textContent = 'Status: Not enabled';
+        button.textContent = 'Enable Notifications';
+        button.disabled = false;
+        button.style.opacity = '1';
+    }
 }

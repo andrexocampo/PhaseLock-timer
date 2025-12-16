@@ -10,6 +10,7 @@ import com.portafolio.PhaseLock_timer.model.TimerStatus;
 import com.portafolio.PhaseLock_timer.repository.TimeBlockRepository;
 import com.portafolio.PhaseLock_timer.repository.TimerSessionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class TimerService {
     private final TimerSessionRepository timerSessionRepository;
     private final TimeBlockRepository timeBlockRepository;
     private final BlockService blockService;
+    private final SimpMessagingTemplate messagingTemplate;
     
     // Mapa para almacenar los schedulers activos por sesión
     private final Map<Long, ScheduledExecutorService> activeTimers = new ConcurrentHashMap<>();
@@ -40,10 +42,12 @@ public class TimerService {
     @Autowired
     public TimerService(TimerSessionRepository timerSessionRepository,
                        TimeBlockRepository timeBlockRepository,
-                       BlockService blockService) {
+                       BlockService blockService,
+                       SimpMessagingTemplate messagingTemplate) {
         this.timerSessionRepository = timerSessionRepository;
         this.timeBlockRepository = timeBlockRepository;
         this.blockService = blockService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     /**
@@ -93,7 +97,10 @@ public class TimerService {
         // Iniciar el timer
         startTimer(saved.getId());
 
-        return toDTO(saved, sequence);
+        TimerStatusDTO dto = toDTO(saved, sequence);
+        // Send initial update via WebSocket
+        sendTimerUpdate(saved.getId());
+        return dto;
     }
 
     /**
@@ -115,7 +122,9 @@ public class TimerService {
         timerSessionRepository.save(session);
 
         BlockSequenceDTO sequence = sessionSequences.get(sessionId);
-        return toDTO(session, sequence);
+        TimerStatusDTO dto = toDTO(session, sequence);
+        sendTimerUpdate(sessionId);
+        return dto;
     }
 
     /**
@@ -136,7 +145,9 @@ public class TimerService {
         startTimer(sessionId);
 
         BlockSequenceDTO sequence = sessionSequences.get(sessionId);
-        return toDTO(session, sequence);
+        TimerStatusDTO dto = toDTO(session, sequence);
+        sendTimerUpdate(sessionId);
+        return dto;
     }
 
     /**
@@ -166,7 +177,9 @@ public class TimerService {
         // Reiniciar el timer
         startTimer(sessionId);
 
-        return toDTO(session, sequence);
+        TimerStatusDTO dto = toDTO(session, sequence);
+        sendTimerUpdate(sessionId);
+        return dto;
     }
 
     /**
@@ -207,7 +220,9 @@ public class TimerService {
             startTimer(sessionId);
         }
 
-        return toDTO(session, sequence);
+        TimerStatusDTO dto = toDTO(session, sequence);
+        sendTimerUpdate(sessionId);
+        return dto;
     }
 
     /**
@@ -338,6 +353,27 @@ public class TimerService {
         }
 
         timerSessionRepository.save(session);
+        
+        // Send update via WebSocket
+        sendTimerUpdate(sessionId);
+    }
+
+    /**
+     * Send timer update via WebSocket
+     */
+    private void sendTimerUpdate(Long sessionId) {
+        try {
+            TimerSession session = timerSessionRepository.findById(sessionId).orElse(null);
+            if (session != null) {
+                BlockSequenceDTO sequence = sessionSequences.get(sessionId);
+                if (sequence != null) {
+                    TimerStatusDTO status = toDTO(session, sequence);
+                    messagingTemplate.convertAndSend("/topic/timer/" + sessionId, status);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error sending WebSocket update: " + e.getMessage());
+        }
     }
 
     /**
@@ -354,6 +390,9 @@ public class TimerService {
 
         BlockSequenceDTO sequence = sessionSequences.get(sessionId);
         TimerStatusDTO dto = toDTO(session, sequence);
+        
+        // Send final update via WebSocket
+        sendTimerUpdate(sessionId);
         
         // Limpiar de memoria después de un delay
         new Timer().schedule(new TimerTask() {
