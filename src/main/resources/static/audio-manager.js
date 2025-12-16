@@ -55,17 +55,43 @@ class AudioManager {
     createDefaultSounds() {
         if (!this.audioContext) return;
 
-        // Pomodoro start sound (higher pitch, shorter)
-        this.sounds.pomodoroStart = () => this.playTone(800, 0.2, 'sine');
+        // Pomodoro start sound - ascending melody (energetic, ~2 seconds)
+        this.sounds.pomodoroStart = () => this.playMelody([
+            { freq: 523, duration: 0.3 },  // C
+            { freq: 659, duration: 0.3 },  // E
+            { freq: 784, duration: 0.3 },  // G
+            { freq: 988, duration: 0.3 }, // B
+            { freq: 1175, duration: 0.4 }, // D (high)
+            { freq: 1319, duration: 0.4 }  // E (high)
+        ]);
         
-        // Break start sound (medium pitch, medium length)
-        this.sounds.breakStart = () => this.playTone(600, 0.3, 'sine');
+        // Break start sound - descending melody (relaxing, ~2 seconds)
+        this.sounds.breakStart = () => this.playMelody([
+            { freq: 880, duration: 0.4 },  // A
+            { freq: 784, duration: 0.3 },   // G
+            { freq: 659, duration: 0.3 },   // E
+            { freq: 587, duration: 0.3 },  // D
+            { freq: 523, duration: 0.4 },   // C
+            { freq: 440, duration: 0.3 }    // A (low)
+        ]);
         
-        // Timer complete sound (chord, longer)
+        // Timer complete sound - celebration melody (~2 seconds)
         this.sounds.timerComplete = () => {
-            this.playTone(523, 0.3, 'sine'); // C
-            setTimeout(() => this.playTone(659, 0.3, 'sine'), 100); // E
-            setTimeout(() => this.playTone(784, 0.4, 'sine'), 200); // G
+            // First phrase
+            this.playMelody([
+                { freq: 523, duration: 0.2 },  // C
+                { freq: 659, duration: 0.2 },  // E
+                { freq: 784, duration: 0.3 }   // G
+            ]);
+            // Second phrase (slightly delayed)
+            setTimeout(() => {
+                this.playMelody([
+                    { freq: 659, duration: 0.2 },  // E
+                    { freq: 784, duration: 0.2 },  // G
+                    { freq: 988, duration: 0.3 },   // B
+                    { freq: 1175, duration: 0.4 }  // D (high)
+                ], 0.7);
+            }, 700);
         };
     }
 
@@ -98,6 +124,49 @@ class AudioManager {
         } catch (error) {
             console.error('Error playing tone:', error);
         }
+    }
+
+    // Play a melody (sequence of tones)
+    playMelody(notes, startTime = 0) {
+        if (!this.audioContext || !this.enabled) return;
+
+        let currentTime = this.audioContext.currentTime + startTime;
+        const volume = this.settings.volume || 0.7;
+
+        notes.forEach((note, index) => {
+            try {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+
+                oscillator.frequency.value = note.freq;
+                oscillator.type = 'sine';
+
+                // Smooth attack and release for each note
+                gainNode.gain.setValueAtTime(0, currentTime);
+                gainNode.gain.linearRampToValueAtTime(
+                    volume * 0.8, // Slightly lower for melody to avoid harshness
+                    currentTime + 0.05
+                );
+                gainNode.gain.linearRampToValueAtTime(
+                    volume * 0.8,
+                    currentTime + note.duration - 0.1
+                );
+                gainNode.gain.exponentialRampToValueAtTime(
+                    0.01,
+                    currentTime + note.duration
+                );
+
+                oscillator.start(currentTime);
+                oscillator.stop(currentTime + note.duration);
+
+                currentTime += note.duration;
+            } catch (error) {
+                console.error('Error playing melody note:', error);
+            }
+        });
     }
 
     // Play sound based on type
@@ -135,13 +204,37 @@ class AudioManager {
     // Play default sound based on type
     playDefaultSound(type) {
         if (type === 'POMODORO') {
-            this.playTone(800, 0.2, 'sine');
+            this.playMelody([
+                { freq: 523, duration: 0.3 },  // C
+                { freq: 659, duration: 0.3 },  // E
+                { freq: 784, duration: 0.3 },  // G
+                { freq: 988, duration: 0.3 }, // B
+                { freq: 1175, duration: 0.4 }, // D (high)
+                { freq: 1319, duration: 0.4 }  // E (high)
+            ]);
         } else if (type === 'SHORT_BREAK' || type === 'LONG_BREAK') {
-            this.playTone(600, 0.3, 'sine');
+            this.playMelody([
+                { freq: 880, duration: 0.4 },  // A
+                { freq: 784, duration: 0.3 },   // G
+                { freq: 659, duration: 0.3 },   // E
+                { freq: 587, duration: 0.3 },  // D
+                { freq: 523, duration: 0.4 },   // C
+                { freq: 440, duration: 0.3 }    // A (low)
+            ]);
         } else if (type === 'COMPLETED') {
-            this.playTone(523, 0.3, 'sine');
-            setTimeout(() => this.playTone(659, 0.3, 'sine'), 100);
-            setTimeout(() => this.playTone(784, 0.4, 'sine'), 200);
+            this.playMelody([
+                { freq: 523, duration: 0.2 },  // C
+                { freq: 659, duration: 0.2 },  // E
+                { freq: 784, duration: 0.3 }   // G
+            ]);
+            setTimeout(() => {
+                this.playMelody([
+                    { freq: 659, duration: 0.2 },  // E
+                    { freq: 784, duration: 0.2 },  // G
+                    { freq: 988, duration: 0.3 },   // B
+                    { freq: 1175, duration: 0.4 }  // D (high)
+                ], 0.7);
+            }, 700);
         }
     }
 
