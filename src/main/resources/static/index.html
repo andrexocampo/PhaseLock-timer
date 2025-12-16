@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhaseLock Timer</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PhaseLock Timer</h1>
+            <p class="subtitle">Pomodoro Technique with Time Blocking</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Timer Panel -->
+            <section class="timer-panel" id="timerPanel">
+                <div class="timer-display">
+                    <div class="phase-indicator" id="phaseIndicator">
+                        <span class="phase-label" id="phaseLabel">-</span>
+                        <span class="phase-progress" id="phaseProgress">- / -</span>
+                    </div>
+                    
+                    <div class="time-display" id="timeDisplay">
+                        <span class="time-value" id="remainingTime">00:00</span>
+                    </div>
+
+                    <div class="timer-info">
+                        <div class="info-item">
+                            <span class="info-label">Elapsed Time:</span>
+                            <span class="info-value" id="elapsedTime">00:00:00</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Status:</span>
+                            <span class="info-value" id="timerStatus">Stopped</span>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timer-controls" id="timerControls">
+                    <button class="btn btn-primary" id="startBtn" onclick="startTimer()">Start</button>
+                    <button class="btn btn-secondary" id="pauseBtn" onclick="pauseTimer()" style="display: none;">Pause</button>
+                    <button class="btn btn-secondary" id="resumeBtn" onclick="resumeTimer()" style="display: none;">Resume</button>
+                    <button class="btn btn-secondary" onclick="restartTimer()">Restart</button>
+                    <button class="btn btn-secondary" onclick="skipPhase()">Skip Phase</button>
+                    <button class="btn btn-danger" onclick="cancelTimer()">Cancel</button>
+                </div>
+            </section>
+
+            <!-- Configuration Panel -->
+            <section class="config-panel">
+                <h2>Configure Block</h2>
+                <form id="blockForm">
+                    <div class="form-group">
+                        <label for="totalDuration">Total Duration (minutes):</label>
+                        <input type="number" id="totalDuration" name="totalDurationMinutes" 
+                               value="120" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pomodoroDuration">Pomodoro Duration (minutes):</label>
+                        <input type="number" id="pomodoroDuration" name="pomodoroDurationMinutes" 
+                               value="25" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="shortBreakDuration">Short Break (minutes):</label>
+                        <input type="number" id="shortBreakDuration" name="shortBreakDurationMinutes" 
+                               value="5" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="longBreakDuration">Long Break (minutes):</label>
+                        <input type="number" id="longBreakDuration" name="longBreakDurationMinutes" 
+                               value="30" min="0" required>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Create Block</button>
+                        <button type="button" class="btn btn-secondary" onclick="createDefaultBlock()">
+                            Use Default Values
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="previewSequence()">
+                            Preview
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Sequence Preview -->
+            <section class="preview-panel" id="previewPanel" style="display: none;">
+                <h2>Sequence Preview</h2>
+                <div id="previewContent"></div>
+            </section>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="message" class="message" style="display: none;"></div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+
